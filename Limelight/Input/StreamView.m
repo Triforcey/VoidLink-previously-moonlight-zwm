@@ -45,6 +45,13 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     
     UIResponder* touchHandler;
     
+    // Last known pen location in view coordinates. A UIHoverGestureRecognizer
+    // reports (0,0) at UIGestureRecognizerStateEnded when the pencil leaves
+    // hover range, so hover-leave events use this cache instead, keeping the
+    // host cursor wherever the pen actually was.
+    BOOL hasLastPenLocation;
+    CGPoint lastPenLocation;
+    
     id<UserInteractionDelegate> interactionDelegate;
     NSTimer* interactionTimer;
     BOOL hasUserInteracted;
@@ -427,7 +434,11 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
             return YES;
     }
 
-    CGPoint location = [self adjustCoordinatesForVideoArea:[event locationInView:self]];
+    // UITouch reports a valid location in every phase including Ended, so
+    // caching here keeps the last known pen position fresh through tip-up.
+    lastPenLocation = [event locationInView:self];
+    hasLastPenLocation = YES;
+    CGPoint location = [self adjustCoordinatesForVideoArea:lastPenLocation];
     CGSize videoSize = [self getVideoAreaSize];
     
     return LiSendPenEvent(type, LI_TOOL_TYPE_PEN, 0, location.x / videoSize.width, location.y / videoSize.height,
@@ -454,7 +465,19 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
             return;
     }
 
-    CGPoint location = [self adjustCoordinatesForVideoArea:[gesture locationInView:self]];
+    // A UIHoverGestureRecognizer reports (0,0) in UIGestureRecognizerStateEnded
+    // when the pencil leaves hover range. For the hover-leave lifecycle event,
+    // send the cached last known location instead so the host cursor does not
+    // jump to the top-left corner after every hover or contact session.
+    bool leaving = (gesture.state == UIGestureRecognizerStateEnded);
+    CGPoint rawHoverLocation = leaving ? (hasLastPenLocation ? lastPenLocation : [gesture locationInView:self])
+                                       : [gesture locationInView:self];
+    if (!leaving) {
+        // Keep the cache fresh with valid hover positions.
+        lastPenLocation = rawHoverLocation;
+        hasLastPenLocation = YES;
+    }
+    CGPoint location = [self adjustCoordinatesForVideoArea:rawHoverLocation];
     CGSize videoSize = [self getVideoAreaSize];
     
     float distance = 0.0f;
@@ -505,11 +528,23 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
             return;
         }
         else{
+            // Send pencil events and exclude them from the downstream touch
+            // pipeline, but do not abort the whole batch. The previous early
+            // return swallowed every simultaneous finger/palm touch while the
+            // pencil was down - and skipped the mouse-button, on-screen
+            // control, and touch-handler paths entirely - which looked like
+            // multi-touch being dead until a regular tap after lifting the
+            // pencil.
+            NSMutableSet* fingerTouches = [NSMutableSet setWithSet:touches];
             for (UITouch* touch in touches) {
-                if (touch.type == UITouchTypePencil) {
-                    if ([self sendStylusEvent:touch]) return;
+                if (touch.type == UITouchTypePencil && [self sendStylusEvent:touch]) {
+                    [fingerTouches removeObject:touch];
                 }
             }
+            if (fingerTouches.count == 0) {
+                return;
+            }
+            touches = fingerTouches;
         }
         // NSLog(@"touchesBegan - allTouches %lu, pointerSet count %lu",[[event allTouches] count], [pointerIdSet count]);
     }
@@ -664,11 +699,23 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
             return;
         }
         else{
+            // Send pencil events and exclude them from the downstream touch
+            // pipeline, but do not abort the whole batch. The previous early
+            // return swallowed every simultaneous finger/palm touch while the
+            // pencil was down - and skipped the mouse-button, on-screen
+            // control, and touch-handler paths entirely - which looked like
+            // multi-touch being dead until a regular tap after lifting the
+            // pencil.
+            NSMutableSet* fingerTouches = [NSMutableSet setWithSet:touches];
             for (UITouch* touch in touches) {
-                if (touch.type == UITouchTypePencil) {
-                    if ([self sendStylusEvent:touch]) return;
+                if (touch.type == UITouchTypePencil && [self sendStylusEvent:touch]) {
+                    [fingerTouches removeObject:touch];
                 }
             }
+            if (fingerTouches.count == 0) {
+                return;
+            }
+            touches = fingerTouches;
         }
         
         // NSLog(@"touchesMoved - allTouches %lu, pointerSet count %lu",[[event allTouches] count], [pointerIdSet count]);
@@ -746,11 +793,23 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
             return;
         }
         else{
+            // Send pencil events and exclude them from the downstream touch
+            // pipeline, but do not abort the whole batch. The previous early
+            // return swallowed every simultaneous finger/palm touch while the
+            // pencil was down - and skipped the mouse-button, on-screen
+            // control, and touch-handler paths entirely - which looked like
+            // multi-touch being dead until a regular tap after lifting the
+            // pencil.
+            NSMutableSet* fingerTouches = [NSMutableSet setWithSet:touches];
             for (UITouch* touch in touches) {
-                if (touch.type == UITouchTypePencil) {
-                    if ([self sendStylusEvent:touch]) return;
+                if (touch.type == UITouchTypePencil && [self sendStylusEvent:touch]) {
+                    [fingerTouches removeObject:touch];
                 }
             }
+            if (fingerTouches.count == 0) {
+                return;
+            }
+            touches = fingerTouches;
         }
         // NSLog(@"touchesEnded - allTouches %lu, pointerSet count %lu",[[event allTouches] count], [pointerIdSet count]);
     }
@@ -780,11 +839,23 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
             return;
         }
         else{
+            // Send pencil events and exclude them from the downstream touch
+            // pipeline, but do not abort the whole batch. The previous early
+            // return swallowed every simultaneous finger/palm touch while the
+            // pencil was down - and skipped the mouse-button, on-screen
+            // control, and touch-handler paths entirely - which looked like
+            // multi-touch being dead until a regular tap after lifting the
+            // pencil.
+            NSMutableSet* fingerTouches = [NSMutableSet setWithSet:touches];
             for (UITouch* touch in touches) {
-                if (touch.type == UITouchTypePencil) {
-                    if ([self sendStylusEvent:touch]) return;
+                if (touch.type == UITouchTypePencil && [self sendStylusEvent:touch]) {
+                    [fingerTouches removeObject:touch];
                 }
             }
+            if (fingerTouches.count == 0) {
+                return;
+            }
+            touches = fingerTouches;
         }
     }
         // NSLog(@"touchesCancelled - allTouches %lu, pointerSet count %lu",[[event allTouches] count], [pointerIdSet count]);
