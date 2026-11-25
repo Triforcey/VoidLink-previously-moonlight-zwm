@@ -1,0 +1,43 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [master, pen-fidelity]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    runs-on: macos-15
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build Limelight (iOS, unsigned)
+        run: |
+          xcodebuild -project Moonlight-ZWM.xcodeproj \
+                     -target Limelight \
+                     -configuration Release \
+                     -sdk iphoneos \
+                     CODE_SIGNING_ALLOWED=NO \
+                     CODE_SIGNING_REQUIRED=NO \
+                     CODE_SIGN_IDENTITY="" \
+                     SYMROOT="$PWD/build" \
+                     build
+
+      - name: Package unsigned IPA
+        run: |
+          mkdir Payload
+          cp -R "build/Release-iphoneos/Limelight.app" Payload/
+          zip -qry VoidLink-unsigned.ipa Payload
+          ls -lh VoidLink-unsigned.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: VoidLink-unsigned-ipa
+          path: VoidLink-unsigned.ipa
