@@ -9,6 +9,13 @@
 
 import UIKit
 
+// Host feature-flag bit for full pen geometry support: hosts that re-pace
+// pen arrivals themselves (the Triforcey/Sunshine fork's jitter buffer)
+// advertise this, so the client sends the complete coalesced sample series
+// without phase-based event substitution. Free bit in the Moonlight host
+// feature-flag space (0x01/0x02 pen+controller touch, 0x10/0x20 touchpad).
+private let LI_FF_PEN_FULL_GEOMETRY: UInt32 = 0x04
+
 @objc class PencilHandler: UIResponder, UIPencilInteractionDelegate {
     @objc static var shared: PencilHandler?
     
@@ -28,6 +35,14 @@ import UIKit
     private var tickInterval: TimeInterval
     private var manualTick: Bool
     private var pencilTickEnabled: Bool
+
+    /// Host advertises full pen geometry support (feature flag 0x04): the
+    /// host re-paces pen arrivals itself, so the client skips sample gating
+    /// - no stroke-phase hover substitution, no slow-stroke-end batching -
+    /// and sends the complete coalesced series with true-timestamp spacing.
+    private var hostFullGeometry: Bool {
+        LiGetHostFeatureFlags() & LI_FF_PEN_FULL_GEOMETRY != 0
+    }
     private var pressureCurveEnabled: Bool = false
     @objc private(set) var pencilTipOffset: CGPoint = .zero
     private var manualHoverFlag: Bool = false
@@ -212,7 +227,7 @@ import UIKit
         for touch in touches {
             let coalesced = event.coalescedTouches(for: touch) ?? []
             _ = self.sendStylusEvent(touchBatch:
-                                    pencilTickEnabled && !(speed(of: touch) <= 0.5 && strokePhase == .phase3)
+                                    pencilTickEnabled && (hostFullGeometry || !(speed(of: touch) <= 0.5 && strokePhase == .phase3))
                                      ? coalesced
                                      : [touch])
         }
@@ -427,6 +442,7 @@ import UIKit
                 targetForce = 0
                 previousForce = 0
                 previousTargetForce = 0
+                normalizedLocation = latestNormalizedLocation
             default:
                 eventType = UInt8(LI_TOUCH_EVENT_HOVER)
             }
@@ -453,7 +469,7 @@ import UIKit
                 }
                 */
                 
-                if self.strokePhase != .phase1 || !self.pencilTickEnabled {LiSendPenEventWithBarrelRoll(eventType, UInt8(LI_TOOL_TYPE_PEN), 0, Float(sendableNormalizedLocation.x), Float(sendableNormalizedLocation.y), sendableForce, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)), barrelRoll)}
+                if self.strokePhase != .phase1 || !self.pencilTickEnabled || self.hostFullGeometry {LiSendPenEventWithBarrelRoll(eventType, UInt8(LI_TOOL_TYPE_PEN), 0, Float(sendableNormalizedLocation.x), Float(sendableNormalizedLocation.y), sendableForce, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)), barrelRoll)}
                 else {
                     LiSendPenEventWithBarrelRoll(UInt8(LI_TOUCH_EVENT_HOVER), UInt8(LI_TOOL_TYPE_PEN), 0, Float(sendableNormalizedLocation.x), Float(sendableNormalizedLocation.y), 0, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)), barrelRoll)
                 }
