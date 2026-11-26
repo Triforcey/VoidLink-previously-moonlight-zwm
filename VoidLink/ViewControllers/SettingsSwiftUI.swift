@@ -4065,7 +4065,7 @@ final class SettingsSession: NSObject, ObservableObject {
             sections.insert(
                 SettingsSectionDescriptor(
                     id: .pencil,
-                    titleKey: "=drawingToolkit",
+                    titleKey: "Drawing Toolkit",
                     icon: UIImage(systemName: "pencil.and.outline"),
                     iconPointSize: 19,
                     iconWeight: .heavy,
@@ -5576,6 +5576,16 @@ final class SettingsSession: NSObject, ObservableObject {
         rollback: @escaping () -> Void,
         onValid: @escaping () -> Void = {}
     ) {
+        // Free-provisioned debug bundles (com.voidlink.tf.*) can never
+        // complete the Pencil Pro Pack purchase - no StoreKit product or
+        // receipt exists for them - so treat them as entitled here
+        // instead of consulting StoreKit and prompting a purchase that
+        // cannot succeed. Mirrors IAPManager.isDebugBundleUngated.
+        if IAPManager.isDebugBundleUngated {
+            onValid()
+            return
+        }
+
         guard let presenter = presentingController else {
             rollback()
             return

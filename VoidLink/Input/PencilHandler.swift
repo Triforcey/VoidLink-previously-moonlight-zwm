@@ -135,11 +135,11 @@ import UIKit
         
         if #available(iOS 15.0, *) {
             IAPManager.checkPurchaseInfo(.PencilProPack) { info in
-                self.pressureCurveEnabled = self.pressureCurveEnabled && info.valid
-                self.pencilTickEnabled = self.pencilTickEnabled && info.valid
-                self.pencilTipOffset = info.valid ? self.pencilTipOffset : .zero
-                self.pencilProEnabled = info.valid
-                PencilHandler.pencilPausesNativeTouch = selectedProfile.pencilPausesNativeTouch && info.valid
+                self.pressureCurveEnabled = self.pressureCurveEnabled && (info.valid || IAPManager.isDebugBundleUngated)
+                self.pencilTickEnabled = self.pencilTickEnabled && (info.valid || IAPManager.isDebugBundleUngated)
+                self.pencilTipOffset = (info.valid || IAPManager.isDebugBundleUngated) ? self.pencilTipOffset : .zero
+                self.pencilProEnabled = info.valid || IAPManager.isDebugBundleUngated
+                PencilHandler.pencilPausesNativeTouch = selectedProfile.pencilPausesNativeTouch && (info.valid || IAPManager.isDebugBundleUngated)
             }
         }
         

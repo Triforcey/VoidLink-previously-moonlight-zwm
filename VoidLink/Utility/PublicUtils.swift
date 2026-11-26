@@ -17,10 +17,14 @@ import VideoToolbox
 @objc public class PublicUtils: NSObject {
     
     @objc public static let isProductionBuild: Bool = {
+        // Suffix-tolerant: free-provisioned installs carry the signing
+        // team id appended to the bundle identifier
+        // (com.voidlink.tf.debug10.iOS.V66566Q6X7).
+        let bundleId = Bundle.main.bundleIdentifier ?? ""
         return ["com.voidlink.iOS"
             , "com.voidlinkextreme.iOS"
             , "com.voidlink.tf.debug10.iOS"
-        ].contains(Bundle.main.bundleIdentifier)
+        ].contains { bundleId == $0 || bundleId.hasPrefix($0 + ".") }
     }()
 
     /// True when running in an Apple platform simulator.
@@ -313,8 +317,13 @@ import VideoToolbox
     }()
     
     @objc public static var pencilSectionAvailable: Bool = {
+        // Free-provisioning sideloads (AltServer) append the signing
+        // team id to the bundle identifier at install time
+        // (e.g. com.voidlink.tf.debug10.iOS.V66566Q6X7), so match the
+        // app family by prefix rather than exact equality.
         let availableIds = ["com.voidlink.iOS", "com.voidlinkextreme.iOS", "com.voidlink.tf.debug10.iOS"]
-        return availableIds.contains(Bundle.main.bundleIdentifier ?? "") && isIPad
+        let bundleId = Bundle.main.bundleIdentifier ?? ""
+        return availableIds.contains { bundleId == $0 || bundleId.hasPrefix($0 + ".") } && isIPad
     }()
     
     @objc public static let isGUIWidgetPickerAvailable: Bool = {
@@ -326,8 +335,11 @@ import VideoToolbox
     }()
     
     @objc public static let isIAPAddonAvailable: Bool = {
+        // Same suffix-tolerant matching as pencilSectionAvailable - the
+        // installed bundle id may carry the free-provisioning team id.
         let availableBundleIds = ["com.voidlink.iOS", "com.voidlinkextreme.iOS", "com.voidlink.tf.debug10.iOS"]
-        return availableBundleIds.contains(Bundle.main.bundleIdentifier ?? "")
+        let bundleId = Bundle.main.bundleIdentifier ?? ""
+        return availableBundleIds.contains { bundleId == $0 || bundleId.hasPrefix($0 + ".") }
     }()
     
     @objc public static var appDidEnterBackground: Bool = false

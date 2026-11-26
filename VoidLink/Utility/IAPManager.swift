@@ -459,8 +459,19 @@ import UIKit
         }
     }
 
+    /// Free-provisioned debug/test bundles (com.voidlink.tf.*) can
+    /// never complete an IAP: no App Store Connect product, no receipt
+    /// to restore. The Pencil Pro Pack features are the whole point of
+    /// these builds, so treat the pack as unlocked in them.
+    static var isDebugBundleUngated: Bool {
+        (Bundle.main.bundleIdentifier ?? "").hasPrefix("com.voidlink.tf.")
+    }
+
     /// RAM-only query; returns false while the purchase status is unknown.
     @objc public static func isValid(_ product: AddOnProduct) -> Bool {
+        if product == .PencilProPack, isDebugBundleUngated {
+            return true
+        }
         return purchaseCache[product] ?? false
     }
 

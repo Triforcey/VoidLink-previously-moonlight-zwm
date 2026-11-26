@@ -3392,10 +3392,7 @@ import ObjectiveC.runtime
             eraserShortcut = eraserShortcut.replacingOccurrences(of: "ERASER", with: "")
             self.functionalWidgetDelegate?.replaceEraser(shortcut: eraserShortcut)
         case "PRESSURECURVE":
-            if ["com.voidlink.iOS"
-                , "com.voidlinkextreme.iOS"
-                , "com.voidlink.tf.debug10.iOS"
-            ].contains(Bundle.main.bundleIdentifier) && PublicUtils.isIPad {
+            if PublicUtils.isProductionBuild && PublicUtils.isIPad {
                 self.functionalWidgetDelegate?.presentPressureCurveVC()
             }
 #endif
