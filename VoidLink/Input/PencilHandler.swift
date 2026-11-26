@@ -254,10 +254,12 @@ import UIKit
                 LiSendTouchEvent(UInt8(LI_TOUCH_EVENT_MOVE), 666666, Float(normalizedLocation.x), Float(normalizedLocation.y), Float((touch.force/touch.maximumPossibleForce)/sin(touch.altitudeAngle)), 0, 0, getRotation(fromAzimuthAngle: Float(touch.azimuthAngle(in: streamView))))
             case .ended where PencilHandler.pencilAndHoverMode == .pencilToMouse,
                  .cancelled where PencilHandler.pencilAndHoverMode == .pencilToMouse:
+                PencilHandler.isDrawing = false
                 streamView.updateCursorLocation(location, isMouse: false)
                 LiSendMouseButtonEvent(CChar(BUTTON_ACTION_RELEASE), BUTTON_LEFT)
             case .ended where PencilHandler.pencilAndHoverMode == .pencilToTouch,
                  .cancelled where PencilHandler.pencilAndHoverMode == .pencilToTouch:
+                PencilHandler.isDrawing = false
                 LiSendTouchEvent(UInt8(LI_TOUCH_EVENT_UP), 666666, Float(normalizedLocation.x), Float(normalizedLocation.y), 0, 0, 0, 0)
             default:
                 break

@@ -1333,6 +1333,19 @@ static CGFloat previousRollAngle = 0;
     }
     
     __block CGPoint normalizedHoverLocation = CGPointMake(location.x/videoSize.width, location.y/videoSize.height);
+    // A UIHoverGestureRecognizer reports (0,0) in its Ended state; sending
+    // that parks the host cursor in the top-left corner after every hover
+    // session, degrading host-side gesture handling until the cursor is
+    // moved back over the canvas. The isTurningToHover substitution below
+    // only covers the stroke-end transition, not a plain leave-range. Keep
+    // the latest-location cache fresh on began/changed and send the last
+    // known pen location on hover-leave instead, so the cursor stays
+    // wherever the pen actually was.
+    if (gesture.state == UIGestureRecognizerStateEnded) {
+        normalizedHoverLocation = PencilHandler.shared.latestNormalizedLocation;
+    } else {
+        PencilHandler.shared.latestNormalizedLocation = normalizedHoverLocation;
+    }
     dispatch_after(0, dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE,0), ^{// Code to execute after the delay
         if(PencilHandler.isDrawing && PencilHandler.pencilAndHoverMode == pencilOnly && PencilHandler.pencilAndHoverMode == hoverDisabled) return;
         switch (PencilHandler.pencilAndHoverMode) {
@@ -1388,8 +1401,9 @@ static CGFloat previousRollAngle = 0;
         [nonPencilTouches minusSet:pencilTouches];
     }
     
+    NSSet* pressTouches = nonPencilTouches ? nonPencilTouches : touches;
     if ([self handleMouseButtonEvent:BUTTON_ACTION_PRESS
-                          forTouches:touches
+                          forTouches:pressTouches
                            withEvent:event]) {
         // If it's a mouse event, we're done
         return;
@@ -1722,6 +1736,13 @@ static CGFloat previousRollAngle = 0;
     NSMutableSet* nonPencilTouches;
     if(pencilTouches.count>0){
         [_pencilHandler touchesEnded:pencilTouches withEvent:event];
+        // The pencil has lifted - restore the interaction state that
+        // touchesBegan suspended on pen-down. Without this the flag
+        // stays true and the viewport stays disabled, leaving finger
+        // multi-touch dead after pen-up until some other interaction
+        // happens to re-enable it.
+        GenericUtils.pencilInStreaming = false;
+        if(touchMode == TouchModeAbsolute) [_streamFrameVC setMagnifierViewportInteractionEnabled:false];
         nonPencilTouches = [touches mutableCopy];
         [nonPencilTouches minusSet:pencilTouches];
     }
@@ -1753,18 +1774,40 @@ static CGFloat previousRollAngle = 0;
 }
 
 - (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event {
-    [touchHandler touchesCancelled:touches withEvent:event];
 #if !TARGET_OS_TV
-    if (touchMode == TouchModeNativeOnly) return; //This is a native touch oriented fork, in pure native touch mode, this call back method deals with native touch only.
+    if (touchMode == TouchModeNativeOnly) {
+        [touchHandler touchesCancelled:touches withEvent:event];
+        return; //This is a native touch oriented fork, in pure native touch mode, this call back method deals with native touch only.
+    }
+    // Route pencil touches to the pencil handler (its cancelled path
+    // mirrors pen-up) and continue the non-pencil touches downstream.
+    // The previous implementation recursed into touchesEnded once per
+    // pencil touch with the full, unfiltered set - double-processing
+    // pencil touches through both the touch handler and the pencil
+    // handler, sending duplicate pen-up events, and never restoring
+    // the pencil streaming state.
+    NSMutableSet* pencilTouches = [NSMutableSet set];
     for (UITouch* touch in touches) {
         if (touch.type == UITouchTypePencil) {
-            [self touchesEnded:touches withEvent:event];
+            [pencilTouches addObject:touch];
         }
     }
-#endif
+    NSMutableSet* nonPencilTouches;
+    if(pencilTouches.count>0){
+        [_pencilHandler touchesCancelled:pencilTouches withEvent:event];
+        GenericUtils.pencilInStreaming = false;
+        if(touchMode == TouchModeAbsolute) [_streamFrameVC setMagnifierViewportInteractionEnabled:false];
+        nonPencilTouches = [touches mutableCopy];
+        [nonPencilTouches minusSet:pencilTouches];
+    }
+    NSSet* targetTouches = nonPencilTouches ? nonPencilTouches : touches;
+    [touchHandler touchesCancelled:targetTouches withEvent:event];
     [self handleMouseButtonEvent:BUTTON_ACTION_RELEASE
-                      forTouches:touches
+                      forTouches:targetTouches
                        withEvent:event];
+#else
+    [touchHandler touchesCancelled:touches withEvent:event];
+#endif
 }
 
 #if !TARGET_OS_TV
