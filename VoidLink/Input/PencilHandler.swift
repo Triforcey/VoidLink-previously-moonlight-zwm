@@ -7,6 +7,7 @@
 //
 
 
+import QuartzCore
 import UIKit
 
 // Host feature-flag bit for full pen geometry support: hosts that re-pace
@@ -42,6 +43,28 @@ private let LI_FF_PEN_FULL_GEOMETRY: UInt32 = 0x04
     /// and sends the complete coalesced series with true-timestamp spacing.
     private var hostFullGeometry: Bool {
         LiGetHostFeatureFlags() & LI_FF_PEN_FULL_GEOMETRY != 0
+    }
+
+    /// Session-clock timestamp in microseconds for pen packets from
+    /// events with no acquisition touch (the hover recognizer). Uses the
+    /// mach-absolute clock - the SAME timebase as UITouch.timestamp - so
+    /// stamps never switch clock domains at contact/hover transitions:
+    /// systemUptime excludes system sleep and diverges from acquisition
+    /// stamps, and the wrap-aware host delta between the two domains read
+    /// as a ~2^32 us garbage gap at every stroke boundary. Wraps at
+    /// ~71.6 minutes; the host reads it wrap-aware.
+    @objc static func currentPenTimestampUs() -> UInt32 {
+        UInt32(truncatingIfNeeded: Int64(CACurrentMediaTime() * 1_000_000))
+    }
+
+    /// True acquisition timestamp of a pen sample in microseconds, from
+    /// the UITouch hardware timestamp. This is what the host's loss
+    /// reconstruction needs: send-time stamps reflect delivery batching
+    /// (one per display frame), acquisition stamps reflect the pencil's
+    /// actual sampling. Wraps at ~71.6 minutes; the host reads it
+    /// wrap-aware.
+    @objc(acquisitionTimestampUsOf:) static func acquisitionTimestampUs(of touch: UITouch) -> UInt32 {
+        UInt32(truncatingIfNeeded: Int64(touch.timestamp * 1_000_000))
     }
     private var pressureCurveEnabled: Bool = false
     @objc private(set) var pencilTipOffset: CGPoint = .zero
@@ -469,19 +492,19 @@ private let LI_FF_PEN_FULL_GEOMETRY: UInt32 = 0x04
                 }
                 */
                 
-                if self.strokePhase != .phase1 || !self.pencilTickEnabled || self.hostFullGeometry {LiSendPenEventWithBarrelRoll(eventType, UInt8(LI_TOOL_TYPE_PEN), 0, Float(sendableNormalizedLocation.x), Float(sendableNormalizedLocation.y), sendableForce, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)), barrelRoll)}
+                if self.strokePhase != .phase1 || !self.pencilTickEnabled || self.hostFullGeometry {LiSendPenEventTimestampedWithBarrelRoll(eventType, UInt8(LI_TOOL_TYPE_PEN), 0, Float(sendableNormalizedLocation.x), Float(sendableNormalizedLocation.y), sendableForce, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)), barrelRoll, PencilHandler.acquisitionTimestampUs(of: touch))}
                 else {
-                    LiSendPenEventWithBarrelRoll(UInt8(LI_TOUCH_EVENT_HOVER), UInt8(LI_TOOL_TYPE_PEN), 0, Float(sendableNormalizedLocation.x), Float(sendableNormalizedLocation.y), 0, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)), barrelRoll)
+                    LiSendPenEventTimestampedWithBarrelRoll(UInt8(LI_TOUCH_EVENT_HOVER), UInt8(LI_TOOL_TYPE_PEN), 0, Float(sendableNormalizedLocation.x), Float(sendableNormalizedLocation.y), 0, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)), barrelRoll, PencilHandler.acquisitionTimestampUs(of: touch))
                 }
                 
                 if eventType == UInt8(LI_TOUCH_EVENT_UP) {
                     PencilHandler.isDrawing = false
                     PencilHandler.isTurningToHover = true
                     if PencilHandler.pencilAndHoverMode == .hoverDisabled || !PencilHandler.hoverSupported {
-                        LiSendPenEventWithBarrelRoll(UInt8(LI_TOUCH_EVENT_HOVER), UInt8(LI_TOOL_TYPE_PEN), 0, Float(self.latestNormalizedLocation.x), Float(self.latestNormalizedLocation.y), 0, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)), barrelRoll)
+                        LiSendPenEventTimestampedWithBarrelRoll(UInt8(LI_TOUCH_EVENT_HOVER), UInt8(LI_TOOL_TYPE_PEN), 0, Float(self.latestNormalizedLocation.x), Float(self.latestNormalizedLocation.y), 0, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)), barrelRoll, PencilHandler.acquisitionTimestampUs(of: touch))
                         DispatchQueue.global().asyncAfter(deadline: .now() + 0.0086){
                             if !PencilHandler.isDrawing {
-                                LiSendPenEventWithBarrelRoll(UInt8(LI_TOUCH_EVENT_HOVER_LEAVE), UInt8(LI_TOOL_TYPE_PEN), 0, Float(self.latestNormalizedLocation.x), Float(self.latestNormalizedLocation.y), 0, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)), barrelRoll)
+                                LiSendPenEventTimestampedWithBarrelRoll(UInt8(LI_TOUCH_EVENT_HOVER_LEAVE), UInt8(LI_TOOL_TYPE_PEN), 0, Float(self.latestNormalizedLocation.x), Float(self.latestNormalizedLocation.y), 0, 0, 0, self.getRotation(fromAzimuthAngle: Float(azimuth)), self.getTilt(fromAltitudeAngle: Float(altitude)), barrelRoll, PencilHandler.acquisitionTimestampUs(of: touch))
                             }
                         }
                     }

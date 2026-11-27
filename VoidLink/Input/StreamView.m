@@ -1268,12 +1268,12 @@ static CGFloat previousRollAngle = 0;
         barrelRoll = [self getBarrelRollFromRollAngle:event.rollAngle];
     }
 
-    return LiSendPenEventWithBarrelRoll(type, LI_TOOL_TYPE_PEN, 0, location.x / videoSize.width, location.y / videoSize.height,
+    return LiSendPenEventTimestampedWithBarrelRoll(type, LI_TOOL_TYPE_PEN, 0, location.x / videoSize.width, location.y / videoSize.height,
                                         (event.force / event.maximumPossibleForce) / sin(event.altitudeAngle),
                                         0.0f, 0.0f,
                                         [self getRotationFromAzimuthAngle:[event azimuthAngleInView:self]],
                                         [self getTiltFromAltitudeAngle:event.altitudeAngle],
-                                        barrelRoll) != LI_ERR_UNSUPPORTED;
+                                        barrelRoll, [PencilHandler acquisitionTimestampUsOf: event]) != LI_ERR_UNSUPPORTED;
 }
 
 - (void)sendStylusHoverEvent:(UIHoverGestureRecognizer*)gesture API_AVAILABLE(ios(13.0)) {
@@ -1354,7 +1354,7 @@ static CGFloat previousRollAngle = 0;
                      normalizedHoverLocation = PencilHandler.shared.latestNormalizedLocation;
                     PencilHandler.isTurningToHover = false;
                 }
-                if(!PencilHandler.isDrawing) LiSendPenEventWithBarrelRoll(type, LI_TOOL_TYPE_PEN, 0, normalizedHoverLocation.x, normalizedHoverLocation.y, distance, 0.0f, 0.0f, rotationAngle, tiltAngle, barrelRoll) ;
+                if(!PencilHandler.isDrawing) LiSendPenEventTimestampedWithBarrelRoll(type, LI_TOOL_TYPE_PEN, 0, normalizedHoverLocation.x, normalizedHoverLocation.y, distance, 0.0f, 0.0f, rotationAngle, tiltAngle, barrelRoll, [PencilHandler currentPenTimestampUs]) ;
                 break;
             case pencilToMouse:
                 if(gesture.state != UIGestureRecognizerStateEnded) [self updateCursorLocation:originalLocation isMouse:NO];
